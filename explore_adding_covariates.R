@@ -1,0 +1,73 @@
+library(tidyverse)
+library(rjags)
+library(runjags)
+
+## generate some aggregate data based on Gompertz ----
+myvar = sample(0:1, 10, replace = TRUE)
+myrate <- 0.2
+mybeta <- 2
+myrates <- if_else(myvar ==1, myrate*mybeta, myrate) 
+fu <- rexp(10, 1)
+mya <- 0.5
+ps <- flexsurv::pgompertz(fu, shape = mya, rate = myrates)
+ps_exp <- pexp(fu, rate = myrate)
+ps
+ps_exp
+Ns <- runif(10, 100, 1000) %>% round()
+r <- rbinom(10, size = Ns, prob = ps)
+
+## Run JAGS Gompertz model -----
+jagscode_gomp <- "model {
+  for (i in 1:N) { # N=number of data points in dataset
+    
+    # likelihood
+    r[i] ~ dbin(p[i], n[i])
+    p[i] <- 1 - exp( -b[i]/a * (exp(a*dt[i]) - 1) )
+    # fixed effects model
+    log(b[i]) <-  mu1 + var1[i]*beta
+  }
+  # priors
+  mu1 ~ dnorm(0, 1)
+  beta ~ dnorm(0,1)
+  a <- ifelse(a_raw == 0, 0.0001, a_raw)
+  a_raw ~ dnorm(0, 1)
+  
+  for (i in 1:N) { # N=number of data points in dataset
+    r_new[i] ~ dbin(p[i], n[i])
+    p_new[i] <-  1 - exp( -b[i]/a * (exp(a*dt[i]) - 1) )
+  }
+  rate <- exp(mu1)
+
+}"
+
+test1 <- run.jags(model = jagscode_gomp, 
+                  monitor = c("mu1", "rate", "beta", "p_new", "a"),
+                  data = list(r = r, 
+                              dt = fu,
+                              n = Ns,
+                              N = length(Ns),
+                              var1 = myvar), 
+                  n.chains = 2, sample = 2000)
+
+
+## Pull and compare results -----
+as_set <- c(log(myrate), myrate, log(mybeta), mya, ps)
+as_set <- tibble(
+  param = c("mu1",
+            "rate",
+            "beta",
+            "a",
+            paste0("p_new[", 1:10, "]")),
+  est = as_set,
+  mdl = "known")
+
+tst1 <- test1$summaries %>% 
+  as_tibble(rownames = "param") %>% 
+  select(param, est = Mean) %>% 
+  mutate(mdl = "gompertz")
+
+cmpr <- bind_rows(as_set,
+                  tst1)
+cmpr %>% 
+  spread(mdl, est)
+
