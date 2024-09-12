@@ -8,11 +8,11 @@ library(runjags)
 myvar = sample(0:1, 10, replace = TRUE)
 myrate <- 0.2
 mybeta <- 2
-myzeta <- 2
-myrates  <- if_else(myvar ==1, myrate*mybeta, myrate) 
-myshapes <- if_else(myvar ==1, mya*myzeta, mya) 
-fu <- rexp(10, 1)
 mya <- 0.5
+myzeta <- -1
+myrates  <- if_else(myvar ==1, myrate*mybeta, myrate) 
+myshapes <- if_else(myvar ==1, mya + myzeta, mya) 
+fu <- rexp(10, 1)
 ps <- flexsurv::pgompertz(fu, shape = myshapes, rate = myrates)
 ps_exp <- pexp(fu, rate = myrate)
 ps
@@ -49,7 +49,7 @@ jagscode_gomp <- "model {
 }"
 
 test1 <- run.jags(model = jagscode_gomp, 
-                  monitor = c("mu1", "rate", "beta", "p_new", "zeta"),
+                  monitor = c("mu1", "rate", "beta", "p_new", "mu2","zeta"),
                   data = list(r = r, 
                               dt = fu,
                               n = Ns,
@@ -59,11 +59,12 @@ test1 <- run.jags(model = jagscode_gomp,
 
 
 ## Pull and compare results -----
-as_set <- c(log(myrate), myrate, log(mybeta), myzeta, ps)
+as_set <- c(log(myrate), myrate, log(mybeta), mya, myzeta, ps)
 as_set <- tibble(
   param = c("mu1",
             "rate",
             "beta",
+            "mu2",
             "zeta",
             paste0("p_new[", 1:10, "]")),
   est = as_set,
